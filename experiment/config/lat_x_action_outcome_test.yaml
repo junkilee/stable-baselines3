@@ -1,0 +1,25 @@
+experiment_name: cartpole_ppo_test
+
+env: cartpole
+
+agents:
+  seed: 1535
+  algorithm: ppo
+  policy: MlpPolicy
+  num_agents: 5
+  load_agent: true
+  save_agent: false
+  do_train: false
+  # task_name: ppo_train
+  # timesteps: 0
+    
+  save_dir: cartpole_agents/
+  env_params:
+    start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
+    start_states: [-2.4, 2.4]
+
+test_module: None
+  # name: prior_test_module
+  # class: experiment.handlers.PriorTestModule
+  # params:
+  #   None

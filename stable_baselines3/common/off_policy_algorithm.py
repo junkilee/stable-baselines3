@@ -1,3 +1,4 @@
+import os
 import io
 import pathlib
 import time
@@ -150,6 +151,7 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             self.policy_kwargs["use_sde"] = self.use_sde
         # For gSDE only
         self.use_sde_at_warmup = use_sde_at_warmup
+        self.save_freq = -1
 
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
@@ -238,7 +240,13 @@ class OffPolicyAlgorithm(BaseAlgorithm):
         tb_log_name: str = "run",
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
+        save_freq: int = -1,
+        save_path: str = None
     ) -> "OffPolicyAlgorithm":
+        # For the intermediate save function
+        self.save_counter = save_freq
+        self.save_freq = save_freq
+        self.save_path = save_path
 
         total_timesteps, callback = self._setup_learn(
             total_timesteps, eval_env, callback, eval_freq, n_eval_episodes, eval_log_path, reset_num_timesteps, tb_log_name
@@ -342,6 +350,15 @@ class OffPolicyAlgorithm(BaseAlgorithm):
             logger.record("rollout/success rate", safe_mean(self.ep_success_buffer))
         # Pass the number of timesteps for tensorboard
         logger.dump(step=self.num_timesteps)
+        if self.save_freq is not -1:
+            if self.num_timesteps >= self.save_counter:                
+                display_str = ""
+                if self.save_freq > 1000:
+                    display_str = str(self.save_counter // 1000)
+                else:
+                    display_str = str(self.save_counter)
+                self.save(self.save_path, "_" + display_str)
+                self.save_counter += self.save_freq
 
     def _on_step(self) -> None:
         """

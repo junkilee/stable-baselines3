@@ -1,4 +1,5 @@
 import time
+import os
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 import gym
@@ -68,7 +69,7 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         verbose: int = 0,
         seed: Optional[int] = None,
         device: Union[th.device, str] = "auto",
-        _init_setup_model: bool = True,
+        _init_setup_model: bool = True
     ):
 
         super(OnPolicyAlgorithm, self).__init__(
@@ -97,6 +98,8 @@ class OnPolicyAlgorithm(BaseAlgorithm):
 
         if _init_setup_model:
             self._setup_model()
+
+        self.save_freq = -1
 
     def _setup_model(self) -> None:
         self._setup_lr_schedule()
@@ -210,7 +213,14 @@ class OnPolicyAlgorithm(BaseAlgorithm):
         tb_log_name: str = "OnPolicyAlgorithm",
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
+        save_freq: int = -1,
+        save_path: str = None,
     ) -> "OnPolicyAlgorithm":
+        # For the intermediate save function
+        self.save_counter = save_freq
+        self.save_freq = save_freq
+        self.save_path = save_path
+        
         iteration = 0
 
         total_timesteps, callback = self._setup_learn(
@@ -240,6 +250,17 @@ class OnPolicyAlgorithm(BaseAlgorithm):
                 logger.record("time/time_elapsed", int(time.time() - self.start_time), exclude="tensorboard")
                 logger.record("time/total_timesteps", self.num_timesteps, exclude="tensorboard")
                 logger.dump(step=self.num_timesteps)
+                if self.save_freq is not -1:
+                    if self.num_timesteps >= self.save_counter:                        
+                        display_str = ""
+                        if self.save_freq > 1000:
+                            display_str = str(self.save_counter // 1000)
+                        else:
+                            display_str = str(self.save_counter)
+                        self.save(self.save_path + "_" + display_str)
+                        self.save_counter += self.save_freq
+
+
 
             self.train()
 

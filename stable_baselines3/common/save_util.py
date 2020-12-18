@@ -274,6 +274,7 @@ def open_path_pathlib(path: pathlib.Path, mode: str, verbose: int = 0, suffix: O
             path = pathlib.Path(f"{path}_2")
         except FileNotFoundError:  # Occurs when the parent folder doesn't exist
             warnings.warn(f"Path '{path.parent}' does not exist. Will create it.")
+            print(path.absolute())
             path.parent.mkdir(exist_ok=True, parents=True)
 
     # if opening was successful uses the identity function
