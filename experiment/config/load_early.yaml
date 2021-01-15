@@ -10,7 +10,7 @@ agents:
   seed: 1938
   algorithm: ppo
   policy: MlpPolicy
-  num_agents: 1
+  num_agents: 10
   load_agent: true
   save_agent: false
   do_train: false
@@ -44,14 +44,12 @@ collector_module:
     [[-0.209, -0.05, 7], [-0.05, 0.05, 29], [0.050, 0.209, 7]], # pole ang.
     [[-0.418, 0.418, 41]]]  # pole ang. vel.
   num_divisions: 41
-  num_agents: 1
-  num_freq_saves: 7
+  num_agents: 10
+  num_freq_saves: 3
   collect_seed: 5868
-  total_trials: 100000
-  save_disk: True
+  total_trials: 50
   env_params:
     start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
     start_states: [0.0]
-    add_noise: True
 
 test_module: None

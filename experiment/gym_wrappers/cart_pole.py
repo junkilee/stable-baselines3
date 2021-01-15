@@ -70,7 +70,7 @@ class ModifiedCartPoleEnv(gym.Env):
     }
 
     def __init__(self, start_state_mode: StartStateMode = StartStateMode.DESIGNATED_POSITIONS,
-                 start_states=[0.0], seed=1):
+                 start_states=[0.0], add_noise=False, seed=1):
         self.state_state_mode = start_state_mode
         self.start_states = start_states
         self.gravity = 9.8
@@ -82,6 +82,7 @@ class ModifiedCartPoleEnv(gym.Env):
         self.force_mag = 10.0
         self.tau = 0.02  # seconds between state updates
         self.kinematics_integrator = 'euler'
+        self.add_noise = add_noise
 
         # Angle at which to fail the episode
         self.theta_threshold_radians = 12 * 2 * math.pi / 360
@@ -135,6 +136,13 @@ class ModifiedCartPoleEnv(gym.Env):
             theta = theta + self.tau * theta_dot
 
         self.state = (x, x_dot, theta, theta_dot)
+        if self.add_noise:
+            self.state = self.state + np.array([
+                self.np_random.uniform(low=-0.05, high=0.05),
+                self.np_random.uniform(low=-0.02, high=0.02),
+                self.np_random.uniform(low=-0.02, high=0.02),
+                self.np_random.uniform(low=-0.05, high=0.05)
+            ])
 
         done = bool(
             x < -self.x_threshold

@@ -1,16 +1,17 @@
 import gym
 import numpy as np
 from gym.envs.registration import register
-from .wrappers import ModifiedCartPoleEnv, StartStateMode
+from .cart_pole import ModifiedCartPoleEnv, StartStateMode
 
 ENTRY_POINT_MAP = {
-    "cartpole": "experiment.gym_wrappers.wrappers:ModifiedCartPoleEnv"
+    "cartpole": "experiment.gym_wrappers.cart_pole:ModifiedCartPoleEnv"
 }
 
 def make(
     domain_name,
     task_name,
     idx,
+    add_noise=False,
     seed=1,
     start_state_mode=None,
     start_states=None,
@@ -29,7 +30,8 @@ def make(
             kwargs={
                 "start_state_mode": start_state_mode,
                 "start_states": start_states,
-                "seed": seed
+                "add_noise": add_noise,
+                "seed": seed                
             },
             max_episode_steps=max_episode_steps,
         )
