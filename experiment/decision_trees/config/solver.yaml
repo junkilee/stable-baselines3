@@ -1,0 +1,5 @@
+hydra:
+  run:
+    dir: ./outputs/${now:%Y-%m-%d-%H-%M-%S}
+
+experiment_name: cartpole_sat_solver

@@ -113,29 +113,8 @@ class ModifiedCartPoleEnv(gym.Env):
         err_msg = "%r (%s) invalid" % (action, type(action))
         assert self.action_space.contains(action), err_msg
 
-        x, x_dot, theta, theta_dot = self.state
-        force = self.force_mag if action == 1 else -self.force_mag
-        costheta = math.cos(theta)
-        sintheta = math.sin(theta)
+        self.state = self.get_next_state(self.state, action)
 
-        # For the interested reader:
-        # https://coneural.org/florian/papers/05_cart_pole.pdf
-        temp = (force + self.polemass_length * theta_dot ** 2 * sintheta) / self.total_mass
-        thetaacc = (self.gravity * sintheta - costheta * temp) / (self.length * (4.0 / 3.0 - self.masspole * costheta ** 2 / self.total_mass))
-        xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
-
-        if self.kinematics_integrator == 'euler':
-            x = x + self.tau * x_dot
-            x_dot = x_dot + self.tau * xacc
-            theta = theta + self.tau * theta_dot
-            theta_dot = theta_dot + self.tau * thetaacc
-        else:  # semi-implicit euler
-            x_dot = x_dot + self.tau * xacc
-            x = x + self.tau * x_dot
-            theta_dot = theta_dot + self.tau * thetaacc
-            theta = theta + self.tau * theta_dot
-
-        self.state = (x, x_dot, theta, theta_dot)
         if self.add_noise:
             self.state = self.state + np.array([
                 self.np_random.uniform(low=-0.05, high=0.05),
@@ -144,12 +123,7 @@ class ModifiedCartPoleEnv(gym.Env):
                 self.np_random.uniform(low=-0.05, high=0.05)
             ])
 
-        done = bool(
-            x < -self.x_threshold
-            or x > self.x_threshold
-            or theta < -self.theta_threshold_radians
-            or theta > self.theta_threshold_radians
-        )
+        done = self.check_terminal_state(self.state)
 
         if not done:
             reward = 1.0
@@ -170,22 +144,27 @@ class ModifiedCartPoleEnv(gym.Env):
 
         return np.array(self.state), reward, done, {}
 
-    def reset(self):
+    def sample_start_state(self):
+        state = None
         if self.state_state_mode == StartStateMode.UNIFORM:
             if self.start_states is None:
                 _min, _max = -4.8, 4.8
             else:
                 _min, _max = self.start_states[0], self.start_states[1]
             start_pos = self.np_random.uniform(low=_min + 0.05, high=_max - 0.05)
-            self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
-            self.state[0] = start_pos
-            self.steps_beyond_done = None
+            state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
+            state[0] = start_pos
+            steps_beyond_done = None
         else:
             which = self.np_random.randint(0, len(self.start_states))
-            self.state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
-            self.state[0] = self.start_states[which] + self.state[0]
-            self.steps_beyond_done = None
-        return np.array(self.state)
+            state = self.np_random.uniform(low=-0.05, high=0.05, size=(4,))
+            state[0] = self.start_states[which] + state[0]
+        return state
+
+    def reset(self):
+        self.state = self.sample_start_state()
+        self.steps_beyond_done = None        
+        return self.state
 
     def manual_set(self, state):
         self.state = state
@@ -248,3 +227,37 @@ class ModifiedCartPoleEnv(gym.Env):
         if self.viewer:
             self.viewer.close()
             self.viewer = None
+
+    def check_terminal_state(self, state):
+        x, x_dot, theta, theta_dot = state
+        return bool(
+            x < -self.x_threshold
+            or x > self.x_threshold
+            or theta < -self.theta_threshold_radians
+            or theta > self.theta_threshold_radians
+        )
+
+    def get_next_state(self, state, action):
+        x, x_dot, theta, theta_dot = state
+        force = self.force_mag if action == 1 else -self.force_mag
+        costheta = math.cos(theta)
+        sintheta = math.sin(theta)
+
+        # For the interested reader:
+        # https://coneural.org/florian/papers/05_cart_pole.pdf
+        temp = (force + self.polemass_length * theta_dot ** 2 * sintheta) / self.total_mass
+        thetaacc = (self.gravity * sintheta - costheta * temp) / (self.length * (4.0 / 3.0 - self.masspole * costheta ** 2 / self.total_mass))
+        xacc = temp - self.polemass_length * thetaacc * costheta / self.total_mass
+
+        if self.kinematics_integrator == 'euler':
+            x = x + self.tau * x_dot
+            x_dot = x_dot + self.tau * xacc
+            theta = theta + self.tau * theta_dot
+            theta_dot = theta_dot + self.tau * thetaacc
+        else:  # semi-implicit euler
+            x_dot = x_dot + self.tau * xacc
+            x = x + self.tau * x_dot
+            theta_dot = theta_dot + self.tau * thetaacc
+            theta = theta + self.tau * theta_dot 
+        
+        return (x, x_dot, theta, theta_dot)

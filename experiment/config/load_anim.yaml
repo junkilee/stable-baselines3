@@ -1,0 +1,41 @@
+hydra:
+  run:
+    dir: ./outputs/${now:%Y-%m-%d-%H-%M-%S}
+
+experiment_name: cartpole_ppo_train
+
+env: cartpole
+
+agents:
+  seed: 1938
+  algorithm: ppo
+  policy: MlpPolicy
+  num_agents: 1
+  load_agent: true
+  save_agent: false
+  do_train: false
+  task_name: ppo_train
+  timesteps: 70000
+  save_freq: 10000  
+    
+  save_dir: /home/joon/xai/causal/stable-baselines3/outputs/zero-train-ver-1213/cartpole_agents/
+  env_params:
+    start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
+    start_states: [0.0]
+
+# collector_module:
+#   _target_: experiment.handlers.DataCollector
+#   num_dims: 4
+#   ranges: [[-2.4, 2.4], [-4.8, 4.8], [-0.209, 0.209], [-0.418, 0.418]]
+#   num_divides: 20
+#   num_agents: 10
+#   num_freq_saves: 7
+#   collect_seed: 5868
+#   total_trials: 50
+#   env_params:
+#     start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
+#     start_states: [0.0]
+
+collector_module: None
+test_module: None
+animator_module: None

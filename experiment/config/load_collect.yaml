@@ -37,17 +37,17 @@ agents:
 #     start_states: [0.0]
 
 collector_module:
-  _target_: experiment.handlers.CustomRangeDataCollector
+  _target_: experiment.data_collectors.CustomRangeDataCollector
   num_dims: 4
-  custom_ranges: [[[-2.4, 2.4, 41]],  # lat. pos.
-    [[-4.8, -1.2, 7], [-1.2, 1.2, 29], [1.2, 4.8, 7]], # lat. vel.
-    [[-0.209, -0.05, 7], [-0.05, 0.05, 29], [0.050, 0.209, 7]], # pole ang.
-    [[-0.418, 0.418, 41]]]  # pole ang. vel.
-  num_divisions: 41
+  custom_ranges: [[[-2.4, 2.4, 21]],  # lat. pos.
+    [[-4.8, 4.8, 21]], # lat. vel.
+    [[-0.209, 0.209, 21]], # pole ang.
+    [[-0.418, 0.418, 21]]]  # pole ang. vel.
+  num_divisions: 21
   num_agents: 1
   num_freq_saves: 7
   collect_seed: 5868
-  total_trials: 50000
+  total_trials: 5000
   save_disk: True
   env_params:
     start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
@@ -55,3 +55,4 @@ collector_module:
     add_noise: True
 
 test_module: None
+animator_module: None
