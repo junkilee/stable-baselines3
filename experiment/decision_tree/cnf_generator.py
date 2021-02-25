@@ -10,7 +10,7 @@ from sympy.logic import simplify_logic
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import And, Or, Not, Equivalent, Implies
 from sympy.parsing.sympy_parser import parse_expr
-from experiment.decision_trees.utils.ansi_colors import BRIGHT_RED, RESET, GREEN
+from experiment.decision_tree.utils.ansi_colors import *
 
 
 def output_cnf(cnf_str):
@@ -24,8 +24,10 @@ def implies_to_cnf(left_id, right_cnfs):
     return result_cnfs
 
 
-def add_to_clauses(left_clauses, right_clauses):
+def add_to_clauses(left_clauses, right_clauses, tag = None):
     processed_clauses = []
+    if tag is not None:
+        print(BRIGHT_BLUE, tag, RESET)
     print(GREEN, right_clauses, RESET)
     if any(isinstance(el, list) for el in right_clauses):
         processed_clauses += right_clauses
@@ -42,13 +44,20 @@ def update_clause(left_clause, right_clause, operation):
 
 
 class CNFGenerator(object):
-    def __init__(self, tree_size, feature_size, example_size):
+    def __init__(self, tree_size, feature_size, example_size, debug=True):
         self._n = tree_size
         self._k = feature_size
         self._m = example_size
         self._counter = 0
         self._var_list = []
         self._var_map = dict()
+
+        if debug:
+            print(BRIGHT_CYAN)
+            print("Tree size        : {}".format(self._n))
+            print("Feature size     : {}".format(self._k))
+            print("Example size     : {}".format(self._m))
+            print(RESET)
 
     @property
     def var_list(self):
@@ -93,11 +102,13 @@ class CNFGenerator(object):
             new_cnfs += [new_cnf]
         return new_cnfs, change
 
-    def get_var_id(self, var_name):
+    def get_var_id(self, var_name):        
+        print(var_name)
         assert var_name in self._var_map
         return self._var_map[var_name]
 
     def get_var_name(self, var_id):
+        #print(var_id)
         assert var_id >= 1 and var_id <= self._counter
         return self._var_list[var_id - 1]
     
@@ -131,6 +142,7 @@ class CNFGenerator(object):
             output_cnf(cnf)
             clauses = self.cnf_to_clauses(to_cnf(cnf))
         if type(cnf) == Symbol:
+            #print(cnf.name)
             clauses += [self.get_var_id(cnf.name)]
         if type(cnf) == Not:
             clauses += [-self.get_var_id(cnf.args[0].name)]
@@ -195,7 +207,7 @@ class CNFGenerator(object):
                 clauses = add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(l_{}_{}, r_{}_{})".format(i, j, i, j+1))) # as (3)
         for j in range(2, self._n+1):
             p_jis = []
-            for i in range(j // 2, min(j, self._n+1)):
+            for i in range(max(1, j // 2), min(j, self._n+1)):
                 p_jis += [self.register("p_{}_{}".format(j,i))]
                 lr_i = self.LR(i)
                 rr_i = self.RR(i)
@@ -212,6 +224,7 @@ class CNFGenerator(object):
             clauses = add_to_clauses(clauses, as6_clauses)  # as (6)
                 
         if debug:
+            print(RED + "Tree Related." + RESET)
             print(self._var_map)
             print(clauses)
         return clauses
@@ -250,8 +263,8 @@ class CNFGenerator(object):
             if debug:
                 output_cnf("d0_{}_1".format(r))
                 output_cnf("d1_{}_1".format(r))
-            clauses = add_to_clauses(clauses, [[-self.get_var_id("d0_{}_1".format(r))]])       # as (7)
-            clauses = add_to_clauses(clauses, [[-self.get_var_id("d1_{}_1".format(r))]])       # as (8)
+            clauses = add_to_clauses(clauses, [[-self.get_var_id("d0_{}_1".format(r))]], tag = "(7)")       # as (7)
+            clauses = add_to_clauses(clauses, [[-self.get_var_id("d1_{}_1".format(r))]], tag = "(8)")       # as (8)
             for j in range(1, self._n + 1):
                 d0_rj = symbols('d0_{}_{}'.format(r, j))
                 d1_rj = symbols('d1_{}_{}'.format(r, j))
@@ -259,29 +272,36 @@ class CNFGenerator(object):
                 exprs_1 = None
                 exprs_9_0 = None
                 exprs_9_1 = None
-                for i in range(j // 2, j - 1 + 1):
-                    expr_0 = parse_expr("(p_{}_{} & d0_{}_{}) | (a_{}_{} & r_{}_{})".format(j, i, r, i, r, i, i, j))
-                    expr_1 = parse_expr("(p_{}_{} & d1_{}_{}) | (a_{}_{} & l_{}_{})".format(j, i, r, i, r, i, i, j))
-                    expr_9_0 = parse_expr("(u_{}_{} & p_{}_{} >> ~a_{}_{})".format(r, i, j, i, r, j))
+                print("===>",j)
+                for i in range(max(1, j // 2), j - 1 + 1):                    
+                    if j in self.RR(i):
+                        expr_0 = parse_expr("(p_{}_{} & d0_{}_{}) | (a_{}_{} & r_{}_{})".format(j, i, r, i, r, i, i, j))
+                        exprs_0 = update_clause(exprs_0, expr_0, Or)
+                    if j in self.LR(i):
+                        expr_1 = parse_expr("(p_{}_{} & d1_{}_{}) | (a_{}_{} & l_{}_{})".format(j, i, r, i, r, i, i, j))
+                        exprs_1 = update_clause(exprs_1, expr_1, Or)
+                    expr_9_0 = parse_expr("(u_{}_{} & p_{}_{}) >> ~a_{}_{}".format(r, i, j, i, r, j))
                     expr_9_1 = parse_expr("(u_{}_{} & p_{}_{})".format(r, i, j, i))
-                    exprs_0 = update_clause(exprs_0, expr_0, Or)
-                    exprs_1 = update_clause(exprs_1, expr_1, Or)
+                    
                     exprs_9_0 = update_clause(exprs_9_0, expr_9_0, And)
                     exprs_9_1 = update_clause(exprs_9_1, expr_9_1, Or)
                 if exprs_0 is not None:
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))) # as (7)
+                    print(exprs_0)                    
+                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))), tag="(7)") # as (7)
                 if exprs_1 is not None:
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))) # as (8)
+                    print(exprs_1)
+                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))), tag="(8)") # as (8)
                 if exprs_9_0 is not None:
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(exprs_9_0)) # as (9-0)
+                    print(exprs_9_0)
+                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(exprs_9_0)), tag="(9-0)") # as (9-0)
                 exprs_9_1 = update_clause(exprs_9_1, symbols("a_{}_{}".format(r,j)), Or)
                 if exprs_9_1 is not None:                    
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(Equivalent(symbols("u_{}_{}".format(r,j)), exprs_9_1))) # as (9-1)
+                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("u_{}_{}".format(r,j)), exprs_9_1))), tag="(9-1)") # as (9-1)
         
         for j in range(1, self._n + 1):
             arjs = []
             for r in range(1, self._k + 1):
-                arjs.append(self.get_var_name("a_{}_{}".format(r,j)))
+                arjs.append(self.get_var_id("a_{}_{}".format(r,j)))
             as10_clauses = CardEnc.equals(lits=arjs, bound=1, encoding=EncType.seqcounter).clauses
             new_clauses, change = self.register_dummy_variables(arjs, as10_clauses, "va1_{}".format(j))
             if change:
@@ -297,6 +317,12 @@ class CNFGenerator(object):
                 as11_clauses = new_clauses
             as11_clauses = implies_to_cnf(self.get_var_id("v_{}".format(i)), as11_clauses)                    # as (11)
             clauses = add_to_clauses(clauses, as11_clauses)
+        
+        if debug:
+            print(RED + "Decision Tree Related." + RESET)
+            print(self._var_map)
+            print(clauses)
+        return clauses
 
 
     def add_example_constraints(self, examples):
@@ -308,8 +334,11 @@ class CNFGenerator(object):
         # d^0_r,j  : 1 iff feature f_r is discriminated for value 0 by node j, or by one of its ancestors, r = 1~K, j = 1~N
         # d^1_r,j  : 1 iff feature f_r is discriminated for value 1 by node j, or by one of its ancestors, r = 1~K, j = 1~N
         # c_j      : 1 iff class of leaf node j is 1, j = 1~N
-        # --------------------------------------------------------------------------------------------------------------------------------
-        # 
+        # -------------------------------------------------------------------------------------------------------------------
+        # v_j and ~c_j -> OR^K_{r=1} d^{\sigma(r,q)}_{r,j}     as (12)
+        # i.e. any positive example must be discriminated if the leaf node is associated with the negative class
+        # v_j and c_j  -> OR^K_{r=1} d^{\sigma(r,q)}_{r,j}     as (13)
+        # i.e. any negative example must be discriminated if the leaf node is associated with the positive class
         clauses = []
 
         for example in examples:
@@ -317,18 +346,19 @@ class CNFGenerator(object):
             L_q, c_q = example
             for j in range(1, self._n + 1):
                 exprs = None
-                for r, f_r in enumerate(L_q):                
+                for _r, f_r in enumerate(L_q):
+                    r = _r + 1
                     if f_r:
                         sigma_r_q  = 1
                     else:
                         sigma_r_q  = 0
                     exprs = update_clause(exprs, symbols("d{}_{}_{}".format(sigma_r_q, r, j)), Or)
-                if c_q: # Positive Example (1)
+                if c_q:     # Positive Example (1)
                     clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                        Implies(parse_expr("v_{} & ~c_{}"), exprs))) # as (12)
-                else: # Negative Example (0)
+                        to_cnf(Implies(parse_expr("v_{} & ~c_{}".format(j, j)), exprs))), tag="(12)")                    # as (12)
+                else:       # Negative Example (0)
                     clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                        Implies(parse_expr("v_{} & c_{}"), exprs))) # as (13)
+                        to_cnf(Implies(parse_expr("v_{} & c_{}".format(j,j)), exprs))), tag="(13)")                     # as (13)
         return clauses
         
 
@@ -346,33 +376,42 @@ class CNFGenerator(object):
         # Pro. 3 (Refine lower bound on descendants' numbers).
         # If tau_t,i = 1 with |-i/2-| < t <= i, then l_i,2(t-1) = 0, r _i,2(i-t+1)+1 = 0
         clauses = []
+        for t in range(0, self._n+1):
+            lda_id = self.register("lda_{}_{}".format(t, 0))
+            clauses = add_to_clauses(clauses, [[-lda_id]])
+            tau_id = self.register("tau_{}_{}".format(t, 0))
+            clauses = add_to_clauses(clauses, [[-tau_id]])
         for i in range(1, self._n+1):
             lda_id = self.register("lda_{}_{}".format(0, i))
             tau_id = self.register("tau_{}_{}".format(0, i))
             for t in range(1, i // 2 + 1):
-                self.register("lda_{}_{}".format(0, i))
+                self.register("lda_{}_{}".format(t, i))
             for t in range(1, i + 1):
-                self.register("tau_{}_{}".format(0, i))
+                self.register("tau_{}_{}".format(t, i))
             clauses = add_to_clauses(clauses, [[lda_id]])
             clauses = add_to_clauses(clauses, [[tau_id]])
             for t in range(1, i // 2 + 1):
                 clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                    "Equivalent(lda_{}_{}, lda_{}_{} | lda_{}_{} & ~v_{})".format(t, i, t, i-1, t-1, i-1, i)))
+                    "Equivalent(lda_{}_{}, lda_{}_{} | (lda_{}_{} & ~v_{}))".format(t, i, t, i-1, t-1, i-1, i)), tag="pro2")
             for t in range(1, i + 1):
                 clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                    "Equivalent(tau_{}_{}, tau_{}_{} | tau_{}_{} & ~v_{})".format(t, i, t, i-1, t-1, i-1, i)))
+                    "Equivalent(tau_{}_{}, tau_{}_{} | (tau_{}_{} & ~v_{}))".format(t, i, t, i-1, t-1, i-1, i)), tag="pro2")
             for t in range(1, i // 2 + 1):
-                clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                    "lda_{}_{} >> ~l_{}_{} and ~r_{}_{}".format(t, i, i, 2*(i-t+1), i, 2*(i-t+1)+1)))
+                if (2*(i-t+1)) in self.LR(i) and (2*(i-t+1)+1) in self.RR(i):
+                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(
+                        "lda_{}_{} >> (~l_{}_{} and ~r_{}_{})".format(t, i, i, 2*(i-t+1), i, 2*(i-t+1)+1)), tag="pro3")
             for t in range(math.ceil(i / 2), i + 1):
-                clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                    "tau_{}_{} >> ~l_{}_{} and ~r_{}_{}".format(t, i, i, 2*(t-1), i, 2*t-1)))
+                if (2*(t-1)) in self.LR(i) and (2*t-1) in self.RR(i):
+                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(
+                        "tau_{}_{} >> (~l_{}_{} and ~r_{}_{})".format(t, i, i, 2*(t-1), i, 2*t-1)), tag="pro3")
         return clauses
     
     def generate(self, examples):
-        self.cnf = CNF() # And of ORs (A or B) and (C or D)
-        self.cnf.extend(self.add_tree_related_cnfs())
+        self.cnf = CNF() # And of ORs (A or B) and (C or D)        
+        self.cnf.extend(self.add_tree_related_cnfs())        
         self.cnf.extend(self.add_decision_tree_related_cnfs())
+        self.cnf.extend(self.add_example_constraints(examples))
+        #self.cnf.extend(self.add_inference_constraints())
         return self.cnf.clauses
 
 @hydra.main(config_path="config", config_name="cnf_generator_test")

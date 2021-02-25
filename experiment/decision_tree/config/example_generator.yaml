@@ -1,6 +1,6 @@
 hydra:
   run:
-    dir: ./outputs/${now:%Y-%m-%d-%H-%M-%S}
+    dir: ./outputs/examples-${now:%Y-%m-%d-%H-%M-%S}
 
 # experiment_name: cartpole_ppo_train
 
@@ -31,9 +31,10 @@ example_gen:
   num_agents: 1
   num_freq_saves: 7
   deterministic: true
-  render: true
+  render: false
   collect_seed: 1013
-  total_trials: 50
+  total_trials: 100
+  example_save_freqs: 2
   save_disk: true
   env_params:
     start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS

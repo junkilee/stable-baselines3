@@ -2,7 +2,7 @@
 """
 
 from experiment.gym_wrappers.cart_pole import ModifiedCartPoleEnv
-from experiment.decision_trees.mdp import MDP, State
+from experiment.decision_tree.mdp import MDP, State
 from collections import defaultdict
 import numpy as np
 
@@ -35,7 +35,7 @@ class Range(object):
     def retrieve_features(self, obs):
         frs = []
         for j, x in enumerate(self._range):
-            if obs <= x:
+            if obs > x:
                 frs += [True]
             else:
                 frs += [False]
@@ -60,8 +60,8 @@ class CartPoleRangeSet(object):
 
     def __init__(self, ranges):
         self._ranges = []
-        for i, range in ranges:
-            self._ranges.append(Range(CartPoleRangeSet.VAR_NAMES[i], range))
+        for i, _range in enumerate(ranges):
+            self._ranges.append(Range(CartPoleRangeSet.VAR_NAMES[i], _range))
 
     @property
     def ranges(self):
@@ -70,7 +70,7 @@ class CartPoleRangeSet(object):
     def convert_to_features(self, obs):
         feature_outputs = []
         for i, _range in enumerate(self._ranges):
-            features_outputs += [_range.retrieve_features(obs[i])]
+            feature_outputs += [_range.retrieve_features(obs[i])]
         return feature_outputs
 
     def convert_to_indices(self, obs):

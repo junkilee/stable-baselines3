@@ -3,7 +3,7 @@
 import numpy as np
 # import copy
 from abc import ABC, abstractmethod
-from experiment.decision_trees.utils.core import sample_from_dict, sample_uniform_from_list
+from experiment.decision_tree.utils.core import sample_from_dict, sample_uniform_from_list
 
 
 class MDP(ABC):

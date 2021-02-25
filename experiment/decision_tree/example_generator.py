@@ -47,6 +47,7 @@ class ExampleCollector(object):
         self.collect_seed = cfg.example_gen.collect_seed
         self.total_trials = cfg.example_gen.total_trials
         self.save_disk = cfg.example_gen.save_disk
+        self.example_save_freqs = cfg.example_gen.example_save_freqs
         self.render = cfg.example_gen.render
 
     def _setup_agent(self, cfg):        
@@ -54,7 +55,7 @@ class ExampleCollector(object):
         self.train_env = gym_wrappers.make(
             cfg.env, 
             cfg.agents.task_name, 
-            "0", 
+            "0",  
             start_state_mode=eval(cfg.agents.env_params.start_state_mode),
             start_states=cfg.agents.env_params.start_states,
             seed=cfg.agents.seed)
@@ -75,7 +76,7 @@ class ExampleCollector(object):
                                         save_freq=cfg.agents.save_freq,
                                         save_path=os.path.join(cfg.agents.save_dir, str(i)))
                 else:
-                    self.agents[i].learn(total_timesteps=cfg.agents.timesteps)                
+                    self.agents[i].learn(total_timesteps=cfg.agents.timesteps)
         else:
             if cfg.agents.save_freq != -1:
                 num_saves = cfg.agents.timesteps // cfg.agents.save_freq
@@ -97,30 +98,38 @@ class ExampleCollector(object):
                                 start_states=self.env_params.start_states,
                                 add_noise=self.env_params.add_noise,
                                 seed=self.collect_seed)
-                        
         data = []
-        for k in range(self.num_agents):
-            print("agent # {}".format(k))
-            for j in tqdm(range(self.total_trials)):
-                # inner_counts = np.zeros(sh, dtype=int32)
-                obs = env.reset()                
-                env.manual_set(obs)
-                for i in range(1000):
-                    action, _states = self.agents[k][self.num_freq_saves-1].predict(obs, deterministic=True)
-                    data.append((obs, action))
-                    obs, reward, done, info = env.step(action)
-                    if self.render:
-                        env.render()
-                    if done:
-                        break
+        
+        for j in tqdm(range(self.total_trials)):
+            # inner_counts = np.zeros(sh, dtype=int32)
+            obs = env.reset()
+            env.manual_set(obs)
+            for i in range(1000):
+                action, _states = self.agents[0][self.num_freq_saves-1].predict(obs, deterministic=True)
+                data.append((obs, action))
+                obs, reward, done, info = env.step(action)
+                if self.render:
+                    env.render()
+                if done:
+                    break
         if self.save_disk:
-            with open('example_data.pickle', 'wb') as handle:
+            with open('example_data_{}.pickle'.format(j), 'wb') as handle:
                 pickle.dump(data, handle)
             print("saved file to {}".format(os.getcwd()))
-
         return
 
-@hydra.main(config_path="config", config_name="load_agent")
+simple_example = [
+    ([1, 0, 1, 0], 0),
+    ([1, 0, 0, 1], 0),
+    ([0, 0, 1, 0], 1),
+    ([1, 1, 0, 0], 0),
+    ([0, 0, 0, 1], 1),
+    ([1, 1, 1, 1], 0),
+    ([0, 1, 1, 0], 0),
+    ([0, 0, 1, 1], 1)
+]
+
+@hydra.main(config_path="config", config_name="example_generator")
 def main(cfg):
     logging.info("Working directory : {}".format(os.getcwd()))
     example_collector = ExampleCollector(cfg)

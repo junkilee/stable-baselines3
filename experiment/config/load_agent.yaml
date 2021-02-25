@@ -22,3 +22,4 @@ agents:
   env_params:
     start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
     start_states: [0.0]
+
