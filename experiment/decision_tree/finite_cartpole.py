@@ -35,7 +35,7 @@ class Range(object):
     def retrieve_features(self, obs):
         frs = []
         for j, x in enumerate(self._range):
-            if obs > x:
+            if x < obs:
                 frs += [True]
             else:
                 frs += [False]

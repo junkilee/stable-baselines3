@@ -27,7 +27,7 @@ def check_true(truth_table, var_id):
 
 
 def check_true_by_name(var_name, truth_table, var_dict):
-    print(var_name)    
+    #print(var_name)    
     assert var_name in var_dict
     var_id = var_dict[var_name]  
     return check_true(truth_table, var_id)
@@ -63,15 +63,26 @@ def generate_labels(n, var_dict, truth_table, main_feat_size, sub_feat_size):
                 for s in range(1, sub_feat_size+1):
                     r = (m-1) * sub_feat_size + s
                     if check_true_by_name("a_{}_{}".format(r, i), truth_table, var_dict):
-                        features = [str(m) + ":" + str(s)]
+                        features += [str(m) + ":" + str(s)]
             labels[i] = ",".join(features)
     return labels
 
 def display_truth_table(var_dict, truth_table):
-    for name in var_dict:
+    for name in sorted(var_dict):
         _id = var_dict[name]
         if check_true(truth_table, _id):
             print(BRIGHT_BLUE + name + RESET, end=' ')
         else:
             print(BRIGHT_RED + name + RESET, end=' ')
     print()
+
+def output_truth_table(output_file, var_dict, truth_table, counter=None):
+    if counter:
+        output_file.write(str(counter) + ' :  ')
+    for name in sorted(var_dict):
+        _id = var_dict[name]
+        if check_true(truth_table, _id):
+            output_file.write(name + '  ')
+        else:
+            output_file.write('-' + name + '  ')
+    output_file.write('\n')            

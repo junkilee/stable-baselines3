@@ -11,6 +11,8 @@ from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import And, Or, Not, Equivalent, Implies
 from sympy.parsing.sympy_parser import parse_expr
 from experiment.decision_tree.utils.ansi_colors import *
+from pysat.solvers import Solver # , Glucose4
+from experiment.decision_tree.utils.tree_visualizer import check_true
 
 
 def output_cnf(cnf_str):
@@ -24,23 +26,51 @@ def implies_to_cnf(left_id, right_cnfs):
     return result_cnfs
 
 
-def add_to_clauses(left_clauses, right_clauses, tag = None):
-    processed_clauses = []
-    if tag is not None:
-        print(BRIGHT_BLUE, tag, RESET)
-    print(GREEN, right_clauses, RESET)
-    if any(isinstance(el, list) for el in right_clauses):
-        processed_clauses += right_clauses
-    else:
-        processed_clauses = right_clauses
-    return left_clauses + processed_clauses
-
+def clauses_to_names(clauses, var_list):
+    clauses_in_str = []
+    for clause in clauses:
+        clause_in_str = []
+        for var in clause:
+            if var < 0:
+                addition = '-'
+            else:
+                addition = ''
+            clause_in_str += [addition + var_list[abs(var) - 1]]
+        clauses_in_str += [clause_in_str]
+    return clauses_in_str
+        
 
 def update_clause(left_clause, right_clause, operation):
     if left_clause is None:
         return right_clause
     else:
         return operation(left_clause, right_clause)
+
+
+def check_cnf_clause(cnf_clause, truth_table):
+    count = 0
+    for truth_val in cnf_clause:
+        var_id = abs(truth_val)
+        val = truth_table[var_id - 1]
+        if truth_val == val:
+            count += 1
+    return count >= 1
+
+
+def _check_list_of_cnfs(list_of_cnfs, truth_table, debug=True):
+    count = 0
+    for cnf_clause in list_of_cnfs:
+        if debug:
+            print(BRIGHT_YELLOW + str(cnf_clause) + RESET, end='')
+        if check_cnf_clause(cnf_clause, truth_table):
+            if debug:
+                print(BLUE + " - OK" + RESET)
+            count += 1        
+        else:
+            if debug:
+                print(RED + " - NOT OK" + RESET)
+
+    return count == len(list_of_cnfs)
 
 
 class CNFGenerator(object):
@@ -51,6 +81,9 @@ class CNFGenerator(object):
         self._counter = 0
         self._var_list = []
         self._var_map = dict()
+        self._tree_related_cnfs = None
+        self._decision_tree_related_cnfs = None
+        self._example_constraints_cnfs = None
 
         if debug:
             print(BRIGHT_CYAN)
@@ -71,7 +104,8 @@ class CNFGenerator(object):
         assert var_name not in self._var_map
         self._counter += 1
         self._var_map[var_name] = self._counter
-        self._var_list += [var_name]
+        self._var_list += [var_name]        
+        assert self._var_list[self._var_map[var_name] - 1] == var_name
         return self._counter
 
     def register_dummy_variables(self, orig_vars, cnfs, name):
@@ -103,7 +137,7 @@ class CNFGenerator(object):
         return new_cnfs, change
 
     def get_var_id(self, var_name):        
-        print(var_name)
+        #print(var_name)
         assert var_name in self._var_map
         return self._var_map[var_name]
 
@@ -155,6 +189,19 @@ class CNFGenerator(object):
             clauses = [clauses]
         return clauses
 
+    def add_to_clauses(self, left_clauses, right_clauses, tag = None):
+        processed_clauses = []
+        if tag is not None:
+            print(BRIGHT_BLUE, tag, RESET)
+        print(GREEN, right_clauses, RESET)
+        print(GREEN, clauses_to_names(right_clauses, self.var_list), RESET)
+        
+        if any(isinstance(el, list) for el in right_clauses):
+            processed_clauses += right_clauses
+        else:
+            processed_clauses = right_clauses
+        return left_clauses + processed_clauses
+
     def add_tree_related_cnfs(self, debug=True):
         # Based on 3.1 Encoding Valid Binary Trees [Naro18]
         # N : # of nodes
@@ -179,32 +226,39 @@ class CNFGenerator(object):
             self.register("v_{}".format(i))
         if debug:
             output_cnf("~v_1")
-        clauses = add_to_clauses(clauses, [[-self.get_var_id("v_1")]])                                        # as (1)
+        clauses = self.add_to_clauses(clauses, [[-self.get_var_id("v_1")]], tag="(1)")                                        # as (1)
         for i in range(1, self._n + 1):
             lr_ids = []
+            print(BLUE + "i: " + str(i) + RESET)
+            print(BLUE + "LR: " + str(self.LR(i)) + RESET)
+            print(BLUE + "RR: " + str(self.RR(i)) + RESET)
             for j in self.LR(i):                
                 lr_ids.append(self.register("l_{}_{}".format(i,j)))
                 #print(to_cnf("v_{} >> ~l_{}_{}".format(i, i, j)))
-                clauses = add_to_clauses(clauses, self.cnf_to_clauses("v_{} >> ~l_{}_{}".format(i, i, j)))   # as (2)                
+                clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("v_{} >> ~l_{}_{}".format(i, i, j)), tag="(2)")   # as (2)
             # rr_ids = []
             # for j in self.RR(i):                
             #     rr_ids.append(self.register("r_{}_{}".format(i,j)))
             #     #print(to_cnf("v_{} >> ~l_{}_{}".format(i, i, j)))
-            #     clauses = add_to_clauses(clauses, self.cnf_to_clauses("v_{} >> ~r_{}_{}".format(i, i, j)))   # as (2)
-            as4_clauses = CardEnc.equals(lits=lr_ids, bound=1, encoding=EncType.seqcounter).clauses
+            #     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("v_{} >> ~r_{}_{}".format(i, i, j)))   # as (2)
+
+            as4_clauses = CardEnc.equals(lits=lr_ids, bound=1, encoding=EncType.seqcounter).clauses            
             new_clauses, change = self.register_dummy_variables(lr_ids, as4_clauses, "v_{}".format(i))
             if change:
                 #print(BRIGHT_RED + "new variables added." + RESET)
                 as4_clauses = new_clauses
-            as4_clauses = implies_to_cnf(-self.get_var_id("v_{}".format(i)), as4_clauses)                    # as (4)
-            clauses = add_to_clauses(clauses, as4_clauses)
+            if as4_clauses == []:
+                as4_clauses = [[self.get_var_id("v_{}".format(i))]]
+            else:
+                as4_clauses = implies_to_cnf(-self.get_var_id("v_{}".format(i)), as4_clauses)                    # as (4)
+            clauses = self.add_to_clauses(clauses, as4_clauses, tag="(4)")
             if debug:
                 print("lr_ids : i={}, {} {}".format(i, lr_ids, self.get_var_names(lr_ids)))
                 print("as 4 : ", as4_clauses)
             for j in self.RR(i):
                 self.register("r_{}_{}".format(i,j))                
             for j in self.LR(i):
-                clauses = add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(l_{}_{}, r_{}_{})".format(i, j, i, j+1))) # as (3)
+                clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(l_{}_{}, r_{}_{})".format(i, j, i, j+1)), tag="(3)") # as (3)
         for j in range(2, self._n+1):
             p_jis = []
             for i in range(max(1, j // 2), min(j, self._n+1)):
@@ -212,16 +266,16 @@ class CNFGenerator(object):
                 lr_i = self.LR(i)
                 rr_i = self.RR(i)
                 if j in lr_i:
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(p_{}_{}, l_{}_{})".format(j, i, i, j))) # as (5)
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(p_{}_{}, l_{}_{})".format(j, i, i, j)), tag="(5)") # as (5)
                 elif j in rr_i:
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(p_{}_{}, r_{}_{})".format(j, i, i, j))) # as (5)
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(p_{}_{}, r_{}_{})".format(j, i, i, j)), tag="(5)") # as (5)
             as6_clauses = CardEnc.equals(lits=p_jis, bound=1, encoding=EncType.seqcounter).clauses
             new_clauses, change = self.register_dummy_variables(p_jis, as6_clauses, "p_{}_is".format(j))
             print(BRIGHT_RED, " + ".join(self.get_var_names(p_jis)) + " = 1", RESET)
             if change:
                 #print(BRIGHT_RED +  " new variables added." + RESET)
                 as6_clauses = new_clauses
-            clauses = add_to_clauses(clauses, as6_clauses)  # as (6)
+            clauses = self.add_to_clauses(clauses, as6_clauses, tag="(6)")  # as (6)
                 
         if debug:
             print(RED + "Tree Related." + RESET)
@@ -263,40 +317,61 @@ class CNFGenerator(object):
             if debug:
                 output_cnf("d0_{}_1".format(r))
                 output_cnf("d1_{}_1".format(r))
-            clauses = add_to_clauses(clauses, [[-self.get_var_id("d0_{}_1".format(r))]], tag = "(7)")       # as (7)
-            clauses = add_to_clauses(clauses, [[-self.get_var_id("d1_{}_1".format(r))]], tag = "(8)")       # as (8)
-            for j in range(1, self._n + 1):
-                d0_rj = symbols('d0_{}_{}'.format(r, j))
-                d1_rj = symbols('d1_{}_{}'.format(r, j))
+                print(BLUE + "===> r, j: {}, {}".format(r, 1) + RESET)
+            clauses = self.add_to_clauses(clauses, [[-self.get_var_id("d0_{}_1".format(r))]], tag = "(7)")       # as (7)
+            clauses = self.add_to_clauses(clauses, [[-self.get_var_id("d1_{}_1".format(r))]], tag = "(8)")       # as (8)
+            clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("u_{}_1".format(r)), symbols("a_{}_1".format(r))))), tag="(9-1)") # as (9-1)
+            for j in range(2, self._n + 1):                
                 exprs_0 = None
                 exprs_1 = None
                 exprs_9_0 = None
                 exprs_9_1 = None
-                print("===>",j)
-                for i in range(max(1, j // 2), j - 1 + 1):                    
-                    if j in self.RR(i):
-                        expr_0 = parse_expr("(p_{}_{} & d0_{}_{}) | (a_{}_{} & r_{}_{})".format(j, i, r, i, r, i, i, j))
-                        exprs_0 = update_clause(exprs_0, expr_0, Or)
+                if debug: 
+                    print(BLUE + "===> r, j: {}, {}".format(r, j) + RESET)
+                for i in range(j // 2, j):
+                    if debug:
+                        print(BLUE + "i: {}".format(i) + " LR: " + str(self.LR(i)) + RESET)
+                        print(BLUE + "i: {}".format(i) + " RR: " + str(self.RR(i)) + RESET)
+                    
                     if j in self.LR(i):
-                        expr_1 = parse_expr("(p_{}_{} & d1_{}_{}) | (a_{}_{} & l_{}_{})".format(j, i, r, i, r, i, i, j))
-                        exprs_1 = update_clause(exprs_1, expr_1, Or)
+                        expr_0 = parse_expr("(p_{}_{} & d0_{}_{}) | (a_{}_{} & l_{}_{})".format(j, i, r, i, r, i, i, j))                        
+                    else:
+                        expr_0 = parse_expr("(p_{}_{} & d0_{}_{})".format(j, i, r, i))
+                    exprs_0 = update_clause(exprs_0, expr_0, Or)
+                    if j in self.RR(i):
+                        expr_1 = parse_expr("(p_{}_{} & d1_{}_{}) | (a_{}_{} & r_{}_{})".format(j, i, r, i, r, i, i, j))
+                    else:
+                        expr_1 = parse_expr("(p_{}_{} & d1_{}_{})".format(j, i, r, i))
+                    exprs_1 = update_clause(exprs_1, expr_1, Or)
+
                     expr_9_0 = parse_expr("(u_{}_{} & p_{}_{}) >> ~a_{}_{}".format(r, i, j, i, r, j))
                     expr_9_1 = parse_expr("(u_{}_{} & p_{}_{})".format(r, i, j, i))
                     
                     exprs_9_0 = update_clause(exprs_9_0, expr_9_0, And)
                     exprs_9_1 = update_clause(exprs_9_1, expr_9_1, Or)
                 if exprs_0 is not None:
-                    print(exprs_0)                    
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))), tag="(7)") # as (7)
+                    print(">", Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))), tag="(7)") # as (7)
+                else:
+                    self.add_to_clauses(clauses, [[-self.get_var_id("d0_{}_{}".format(r, j))]], tag = "(7)")
+                    #print(RED + "> [][][][][] (7)" + RESET)
                 if exprs_1 is not None:
-                    print(exprs_1)
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))), tag="(8)") # as (8)
+                    print(">>", Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))), tag="(8)") # as (8)
+                else:
+                    self.add_to_clauses(clauses, [[-self.get_var_id("d1_{}_{}".format(r, j))]], tag = "(8)")
+                    #print(RED + "> [][][][][] (8)" + RESET)
                 if exprs_9_0 is not None:
-                    print(exprs_9_0)
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(exprs_9_0)), tag="(9-0)") # as (9-0)
+                    print(">>>", exprs_9_0)
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(exprs_9_0)), tag="(9-0)") # as (9-0)
+                else:
+                    print(RED + "> [][][][][] (9-0)" + RESET)
                 exprs_9_1 = update_clause(exprs_9_1, symbols("a_{}_{}".format(r,j)), Or)
                 if exprs_9_1 is not None:                    
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("u_{}_{}".format(r,j)), exprs_9_1))), tag="(9-1)") # as (9-1)
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("u_{}_{}".format(r,j)), exprs_9_1))), tag="(9-1)") # as (9-1)
+                else:
+                    print(RED + "> [][][][][] (9-1)" + RESET)
+                    
         
         for j in range(1, self._n + 1):
             arjs = []
@@ -307,16 +382,16 @@ class CNFGenerator(object):
             if change:
                 #print(BRIGHT_RED + "new variables added." + RESET)
                 as10_clauses = new_clauses
-            as10_clauses = implies_to_cnf(-self.get_var_id("v_{}".format(i)), as10_clauses)                    # as (10)
-            clauses = add_to_clauses(clauses, as10_clauses)
+            as10_clauses = implies_to_cnf(-self.get_var_id("v_{}".format(j)), as10_clauses)                    # as (10)
+            clauses = self.add_to_clauses(clauses, as10_clauses, tag="(10)")
 
             as11_clauses = CardEnc.equals(lits=arjs, bound=0, encoding=EncType.seqcounter).clauses
             new_clauses, change = self.register_dummy_variables(arjs, as11_clauses, "va0_{}".format(j))
             if change:
                 #print(BRIGHT_RED + "new variables added." + RESET)
                 as11_clauses = new_clauses
-            as11_clauses = implies_to_cnf(self.get_var_id("v_{}".format(i)), as11_clauses)                    # as (11)
-            clauses = add_to_clauses(clauses, as11_clauses)
+            as11_clauses = implies_to_cnf(self.get_var_id("v_{}".format(j)), as11_clauses)                    # as (11)
+            clauses = self.add_to_clauses(clauses, as11_clauses, tag="(11)")
         
         if debug:
             print(RED + "Decision Tree Related." + RESET)
@@ -325,7 +400,7 @@ class CNFGenerator(object):
         return clauses
 
 
-    def add_example_constraints(self, examples):
+    def add_example_constraints(self, examples, debug=True):
         # Based on 3.2 Computing Decision Trees with SAT [Naro18]
         # K : # of features, N : # of nodes, M : # of data
 
@@ -341,7 +416,8 @@ class CNFGenerator(object):
         # i.e. any negative example must be discriminated if the leaf node is associated with the positive class
         clauses = []
 
-        for example in examples:
+
+        for i, example in enumerate(examples):
             #positive and negative
             L_q, c_q = example
             for j in range(1, self._n + 1):
@@ -354,11 +430,15 @@ class CNFGenerator(object):
                         sigma_r_q  = 0
                     exprs = update_clause(exprs, symbols("d{}_{}_{}".format(sigma_r_q, r, j)), Or)
                 if c_q:     # Positive Example (1)
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                        to_cnf(Implies(parse_expr("v_{} & ~c_{}".format(j, j)), exprs))), tag="(12)")                    # as (12)
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(
+                        to_cnf(Implies(parse_expr("v_{} & ~c_{}".format(j, j)), exprs))), tag="(12)-{}-{}".format(i, j))                    # as (12)
                 else:       # Negative Example (0)
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(
-                        to_cnf(Implies(parse_expr("v_{} & c_{}".format(j,j)), exprs))), tag="(13)")                     # as (13)
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(
+                        to_cnf(Implies(parse_expr("v_{} & c_{}".format(j, j)), exprs))), tag="(13)-{}-{}".format(i, j))                     # as (13)
+        if debug:
+            print(RED + "Example Related." + RESET)
+            print(self._var_map)
+            print(clauses)
         return clauses
         
 
@@ -405,20 +485,51 @@ class CNFGenerator(object):
                     clauses = add_to_clauses(clauses, self.cnf_to_clauses(
                         "tau_{}_{} >> (~l_{}_{} and ~r_{}_{})".format(t, i, i, 2*(t-1), i, 2*t-1)), tag="pro3")
         return clauses
+
     
-    def generate(self, examples):
-        self.cnf = CNF() # And of ORs (A or B) and (C or D)        
-        self.cnf.extend(self.add_tree_related_cnfs())        
-        self.cnf.extend(self.add_decision_tree_related_cnfs())
-        self.cnf.extend(self.add_example_constraints(examples))
+    def check_tree_related_cnfs(self, truth_table):
+        if self._tree_related_cnfs is not None:
+            _check_list_of_cnfs(self._tree_related_cnfs, truth_table)
+        else:
+            raise Exception("Tree Related CNFs not initialized.")
+
+    def check_decision_tree_related_cnfs(self, truth_table):
+        if self._decision_tree_related_cnfs is not None:
+            _check_list_of_cnfs(self._decision_tree_related_cnfs, truth_table)
+        else:
+            raise Exception("Decision Tree Related CNFs not initialized.")
+
+    def check_example_constraints_cnfs(self, truth_table, debug=True):
+        if self._example_constraints_cnfs is not None:
+            _check_list_of_cnfs(self._example_constraints_cnfs, truth_table, debug)
+        else:
+            raise Exception("Tree Related CNFs not initialized.")
+ 
+    def generate(self, examples, debug=True):
+        self.cnf = CNF() # And of ORs (A or B) and (C or D)
+        if debug:
+            print(CYAN + "generating cnfs ===== for {} size".format(self._n) + RESET)
+        self._tree_related_cnfs = self.add_tree_related_cnfs()
+        self._decision_tree_related_cnfs = self.add_decision_tree_related_cnfs()
+        self._example_constraints_cnfs = self.add_example_constraints(examples)
+        self.cnf.extend(self._tree_related_cnfs)
+        self.cnf.extend(self._decision_tree_related_cnfs)
+        self.cnf.extend(self._example_constraints_cnfs) 
         #self.cnf.extend(self.add_inference_constraints())
+
         return self.cnf.clauses
 
 @hydra.main(config_path="config", config_name="cnf_generator_test")
 def main(cfg):
     logging.info("Working directory : {}".format(os.getcwd()))
-    gen = CNFGenerator(5, 4*4, 10)
-    #print(gen.generate())    
+    formulas = CardEnc.atmost(lits=[1,2,3], bound=1, encoding=EncType.seqcounter).clauses
+    print(formulas)
+    s = Solver(name='g4')
+    s.append_formula(formulas)
+    result = s.solve()
+    print(result)
+    for m in s.enum_models():
+        print(m)
 
 if __name__ == "__main__":
     main()

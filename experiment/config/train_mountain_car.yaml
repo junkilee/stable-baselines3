@@ -1,0 +1,27 @@
+hydra:
+  run:
+    dir: ./outputs/mcar_${now:%Y-%m-%d-%H-%M-%S}
+
+experiment_name: mountain_car_ppo_train
+
+env: mountain_car
+
+agents:
+  seed: 1938
+  algorithm: ppo
+  policy: MlpPolicy
+  num_agents: 1
+  load_agent: false
+  save_agent: true
+  do_train: true
+  task_name: ppo_train
+  timesteps: 30000
+  save_freq: 5000  
+    
+  save_dir: ./mountain_car_agents/
+#  env_params:
+#    start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
+#    start_states: [0.0]
+
+test_module: None
+collector_module: None

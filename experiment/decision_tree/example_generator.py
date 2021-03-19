@@ -118,7 +118,7 @@ class ExampleCollector(object):
             print("saved file to {}".format(os.getcwd()))
         return
 
-simple_example = [
+simple_example = [ # L, (right) C
     ([1, 0, 1, 0], 0),
     ([1, 0, 0, 1], 0),
     ([0, 0, 1, 0], 1),

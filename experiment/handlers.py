@@ -51,13 +51,18 @@ class ExperimentHandler(object):
 
     def _setup_agent(self, cfg):        
         # setup training environment if necessary        
+        env_params = dict()
+        if hasattr(cfg.agents, 'env_params'):
+            for param in dir(cfg.agents.env_params):
+                env_params[param] = getattr(cfg.agents.env_params, param)
+        if hasattr(cfg.agents, 'seed'):
+            env_params['seed'] = getattr(cfg.agents, 'seed')
+        
         self.train_env = gym_wrappers.make(
             cfg.env, 
             cfg.agents.task_name, 
             "0", 
-            start_state_mode=eval(cfg.agents.env_params.start_state_mode),
-            start_states=cfg.agents.env_params.start_states,
-            seed=cfg.agents.seed)
+            **env_params)
         # setup agents
         self.num_agents = cfg.agents.num_agents
         for i in range(self.num_agents):
@@ -163,7 +168,7 @@ class PriorTestModule(TestModule):
         pass
 
 
-@hydra.main(config_path="config", config_name="load", strict=True)
+@hydra.main(config_path="config", config_name="load")
 def main(cfg):
     logging.info("Working directory : {}".format(os.getcwd()))
     experiment = ExperimentHandler(cfg)
