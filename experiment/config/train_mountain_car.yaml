@@ -8,15 +8,15 @@ env: mountain_car
 
 agents:
   seed: 1938
-  algorithm: ppo
+  algorithm: dqn
   policy: MlpPolicy
   num_agents: 1
   load_agent: false
   save_agent: true
   do_train: true
-  task_name: ppo_train
-  timesteps: 30000
-  save_freq: 5000  
+  task_name: dqn_train
+  timesteps: 200000
+  save_freq: 20000  
     
   save_dir: ./mountain_car_agents/
 #  env_params:

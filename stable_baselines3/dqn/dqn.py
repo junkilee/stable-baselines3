@@ -223,6 +223,8 @@ class DQN(OffPolicyAlgorithm):
         tb_log_name: str = "DQN",
         eval_log_path: Optional[str] = None,
         reset_num_timesteps: bool = True,
+        save_freq: int = -1,
+        save_path: str = None,
     ) -> OffPolicyAlgorithm:
 
         return super(DQN, self).learn(
@@ -235,6 +237,8 @@ class DQN(OffPolicyAlgorithm):
             tb_log_name=tb_log_name,
             eval_log_path=eval_log_path,
             reset_num_timesteps=reset_num_timesteps,
+            save_freq=save_freq,
+            save_path=save_path,
         )
 
     def _excluded_save_params(self) -> List[str]:

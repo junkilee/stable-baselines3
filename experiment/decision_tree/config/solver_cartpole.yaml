@@ -1,0 +1,20 @@
+hydra:
+  run:
+    dir: ./outputs/solver-${now:%Y-%m-%d-%H-%M-%S}
+
+experiment_name: cartpole_sat_solver
+
+solver:
+  use_simple: false
+  example_file: /home/joon/xai/causal/stable-baselines3/outputs/example_data/example_data_99.pickle
+  model_output_file: model_output.txt
+  max_output_models: 1000
+  n_example_steps: 100
+  max_tree_size: 21
+  n_features: 4
+  n_sub_features: 20
+  use_custom_range: false
+  test_env_params:
+    start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
+    start_states: [0.0]
+    add_noise: False

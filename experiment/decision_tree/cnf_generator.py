@@ -13,6 +13,7 @@ from sympy.parsing.sympy_parser import parse_expr
 from experiment.decision_tree.utils.ansi_colors import *
 from pysat.solvers import Solver # , Glucose4
 from experiment.decision_tree.utils.tree_visualizer import check_true
+from enum import Enum, IntEnum
 
 
 def output_cnf(cnf_str):
@@ -73,8 +74,14 @@ def _check_list_of_cnfs(list_of_cnfs, truth_table, debug=True):
     return count == len(list_of_cnfs)
 
 
+class CNFGenDebugLevel(IntEnum):
+    NO_OUTPUT = 1
+    SOLVER_LEVEL = 2
+    CNF_LEVEL = 3
+    
+
 class CNFGenerator(object):
-    def __init__(self, tree_size, feature_size, example_size, debug=True):
+    def __init__(self, tree_size, feature_size, example_size, debug_level:CNFGenDebugLevel=None):
         self._n = tree_size
         self._k = feature_size
         self._m = example_size
@@ -84,8 +91,9 @@ class CNFGenerator(object):
         self._tree_related_cnfs = None
         self._decision_tree_related_cnfs = None
         self._example_constraints_cnfs = None
+        self._debug_level = debug_level
 
-        if debug:
+        if self._debug_level and self._debug_level >= CNFGenDebugLevel.SOLVER_LEVEL:
             print(BRIGHT_CYAN)
             print("Tree size        : {}".format(self._n))
             print("Feature size     : {}".format(self._k))
@@ -202,7 +210,7 @@ class CNFGenerator(object):
             processed_clauses = right_clauses
         return left_clauses + processed_clauses
 
-    def add_tree_related_cnfs(self, debug=True):
+    def add_tree_related_cnfs(self, debug=False):
         # Based on 3.1 Encoding Valid Binary Trees [Naro18]
         # N : # of nodes
         # v_i      : 1 iff node i is a leaf node
