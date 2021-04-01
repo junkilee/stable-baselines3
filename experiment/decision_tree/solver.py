@@ -2,9 +2,10 @@ import hydra
 import logging
 import os
 import glob
+from threading import Timer
 from pysat.solvers import Solver # , Glucose4
 from pysat.formula import CNF # , WCNF
-from .cnf_generator import CNFGenerator 
+from .cnf_generator import CNFGenDebugLevel, CNFGenerator 
 from experiment.decision_tree.utils.tree_visualizer import check_true, check_true_by_name, generate_graph, \
         display_truth_table, generate_labels, plot_graph, output_truth_table, \
         check_true, check_true_by_name
@@ -117,10 +118,11 @@ class DecisionTreeSATSolver(object):
             self._n_features        = cfg.solver.n_features
             self._n_sub_features    = cfg.solver.n_sub_features        
             self._test_env_params   = cfg.solver.test_env_params
-        self._max_tree_size     = cfg.solver.max_tree_size
-        self._model_output_file = cfg.solver.model_output_file
-        self._max_output_models = cfg.solver.max_output_models
-
+        self._starting_tree_size    = cfg.solver.starting_tree_size
+        self._max_tree_size         = cfg.solver.max_tree_size
+        self._model_output_file     = cfg.solver.model_output_file
+        self._max_output_models     = cfg.solver.max_output_models
+        self._solver_timeout        = cfg.solver.solver_timeout
 
     def _load_example(self, filename):
         self._data = load_data(filename)
@@ -130,10 +132,10 @@ class DecisionTreeSATSolver(object):
         self._feature_action_list = []
         for data in self._data[:self._n_example_steps]:
             obs, action = data
-            print(obs, action)
+            #print(obs, action)
             features = unpack_feature_list(self._range.convert_to_features(obs))
             self._feature_action_list += [(features, action)]
-            print(features, action)
+            #print(features, action)
     
     def build_decision_tree(self, cur, var_dict, truth_table, cnf):        
         if not check_true(truth_table, cur):
@@ -187,22 +189,30 @@ class DecisionTreeSATSolver(object):
 
         counter = 1
         prev_edge_tables = []
-        print(RED + "START {}".format(self._max_tree_size) + RESET)
+        print(RED + "START - max tree size = {}".format(self._max_tree_size) + RESET)
 
         output_file = open(self._model_output_file, "w")
 
-        for tree_size in range(5, self._max_tree_size + 1, 2):
+        for tree_size in range(self._starting_tree_size, self._max_tree_size + 1, 2):
             cnf_gen = CNFGenerator(
                 tree_size,
                 self._n_features * self._n_sub_features,
-                self._n_example_steps)
+                self._n_example_steps,
+                debug_level=CNFGenDebugLevel.SOLVER_LEVEL)
             
             s = Solver(name='g4')
             print(GREEN + "Generate - {}".format(len(self._feature_action_list)) + RESET)
             s.append_formula(cnf_gen.generate(self._feature_action_list))
+            print(GREEN + "Formulas generated." + RESET)
             
+            def interrupt(s):
+                s.interrupt()
 
-            result = s.solve()
+            timer = Timer(1000, interrupt, [s])
+            timer.start()
+            
+            result = s.solve_limited(expect_interrupt=True)
+
             print(RED + "RESULT " + CYAN + str(tree_size) + RED + " : " + RESET)
             print(result)                    
 
@@ -242,11 +252,16 @@ class DecisionTreeSATSolver(object):
                         counter = counter + 1
                         before_truth_table = m_after
                         if self._max_output_models < counter:
-                            return            
+                            print(RED + "Models all found." + RESET)
+                            break
                     else:
                         print(".", end='')
             s.delete()
             print('')
+            if self._max_output_models < counter:
+                print(RED + "Terminating." + RESET)
+                break
+        print("Closing files.")
         output_file.close()
 
 
@@ -255,6 +270,9 @@ def main(cfg):
     logging.info("Working directory : {}".format(os.getcwd()))
     solver = DecisionTreeSATSolver(cfg)    
     solver.solve()
+    print("done.")
 
 if __name__ == "__main__":
     main()
+    print("done..")
+    exit(0)

@@ -6,14 +6,12 @@ from pysat.formula import CNF # , WCNF
 from pysat.card import *
 from sympy import symbols
 from sympy.logic.boolalg import to_cnf
-from sympy.logic import simplify_logic
 from sympy.core.symbol import Symbol
 from sympy.logic.boolalg import And, Or, Not, Equivalent, Implies
 from sympy.parsing.sympy_parser import parse_expr
 from experiment.decision_tree.utils.ansi_colors import *
 from pysat.solvers import Solver # , Glucose4
-from experiment.decision_tree.utils.tree_visualizer import check_true
-from enum import Enum, IntEnum
+from enum import IntEnum
 
 
 def output_cnf(cnf_str):
@@ -128,8 +126,7 @@ class CNFGenerator(object):
         change = False
         for var in dummy_vars:
             change = True
-            new_id = self.register("dummy_{}_{}".format(name, var))
-            #print("NEW VAR", var, new_id)
+            new_id = self.register("dummy_{}_{}".format(name, var))            
             new_dummy_ids[var] = new_id
         new_cnfs = []
         for cnf in cnfs:
@@ -144,8 +141,7 @@ class CNFGenerator(object):
             new_cnfs += [new_cnf]
         return new_cnfs, change
 
-    def get_var_id(self, var_name):        
-        #print(var_name)
+    def get_var_id(self, var_name):
         assert var_name in self._var_map
         return self._var_map[var_name]
 
@@ -181,7 +177,8 @@ class CNFGenerator(object):
     def cnf_to_clauses(self, cnf):
         clauses = []
         if type(cnf) == str:
-            output_cnf(cnf)
+            if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                output_cnf(cnf)
             clauses = self.cnf_to_clauses(to_cnf(cnf))
         if type(cnf) == Symbol:
             #print(cnf.name)
@@ -199,10 +196,12 @@ class CNFGenerator(object):
 
     def add_to_clauses(self, left_clauses, right_clauses, tag = None):
         processed_clauses = []
-        if tag is not None:
-            print(BRIGHT_BLUE, tag, RESET)
-        print(GREEN, right_clauses, RESET)
-        print(GREEN, clauses_to_names(right_clauses, self.var_list), RESET)
+        if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+            if tag is not None:
+                print(BRIGHT_BLUE, tag, RESET)
+        if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+            print(GREEN, right_clauses, RESET)
+            print(GREEN, clauses_to_names(right_clauses, self.var_list), RESET)
         
         if any(isinstance(el, list) for el in right_clauses):
             processed_clauses += right_clauses
@@ -210,7 +209,7 @@ class CNFGenerator(object):
             processed_clauses = right_clauses
         return left_clauses + processed_clauses
 
-    def add_tree_related_cnfs(self, debug=False):
+    def add_tree_related_cnfs(self):
         # Based on 3.1 Encoding Valid Binary Trees [Naro18]
         # N : # of nodes
         # v_i      : 1 iff node i is a leaf node
@@ -232,14 +231,15 @@ class CNFGenerator(object):
         clauses = []
         for i in range(1, self._n+1):
             self.register("v_{}".format(i))
-        if debug:
+        if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
             output_cnf("~v_1")
         clauses = self.add_to_clauses(clauses, [[-self.get_var_id("v_1")]], tag="(1)")                                        # as (1)
         for i in range(1, self._n + 1):
             lr_ids = []
-            print(BLUE + "i: " + str(i) + RESET)
-            print(BLUE + "LR: " + str(self.LR(i)) + RESET)
-            print(BLUE + "RR: " + str(self.RR(i)) + RESET)
+            if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                print(BLUE + "i: " + str(i) + RESET)
+                print(BLUE + "LR: " + str(self.LR(i)) + RESET)
+                print(BLUE + "RR: " + str(self.RR(i)) + RESET)
             for j in self.LR(i):                
                 lr_ids.append(self.register("l_{}_{}".format(i,j)))
                 #print(to_cnf("v_{} >> ~l_{}_{}".format(i, i, j)))
@@ -260,7 +260,7 @@ class CNFGenerator(object):
             else:
                 as4_clauses = implies_to_cnf(-self.get_var_id("v_{}".format(i)), as4_clauses)                    # as (4)
             clauses = self.add_to_clauses(clauses, as4_clauses, tag="(4)")
-            if debug:
+            if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
                 print("lr_ids : i={}, {} {}".format(i, lr_ids, self.get_var_names(lr_ids)))
                 print("as 4 : ", as4_clauses)
             for j in self.RR(i):
@@ -279,19 +279,20 @@ class CNFGenerator(object):
                     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("Equivalent(p_{}_{}, r_{}_{})".format(j, i, i, j)), tag="(5)") # as (5)
             as6_clauses = CardEnc.equals(lits=p_jis, bound=1, encoding=EncType.seqcounter).clauses
             new_clauses, change = self.register_dummy_variables(p_jis, as6_clauses, "p_{}_is".format(j))
-            print(BRIGHT_RED, " + ".join(self.get_var_names(p_jis)) + " = 1", RESET)
+            if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                print(BRIGHT_RED, " + ".join(self.get_var_names(p_jis)) + " = 1", RESET)
             if change:
                 #print(BRIGHT_RED +  " new variables added." + RESET)
                 as6_clauses = new_clauses
             clauses = self.add_to_clauses(clauses, as6_clauses, tag="(6)")  # as (6)
                 
-        if debug:
+        if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
             print(RED + "Tree Related." + RESET)
             print(self._var_map)
             print(clauses)
         return clauses
 
-    def add_decision_tree_related_cnfs(self, debug=True):
+    def add_decision_tree_related_cnfs(self):
         # Based on 3.2 Computing Decision Trees with SAT [Naro18]
         # K : # of features, N : # of nodes, M : # of data
 
@@ -322,7 +323,7 @@ class CNFGenerator(object):
             self.register("c_{}".format(j))
 
         for r in range(1, self._k + 1):
-            if debug:
+            if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
                 output_cnf("d0_{}_1".format(r))
                 output_cnf("d1_{}_1".format(r))
                 print(BLUE + "===> r, j: {}, {}".format(r, 1) + RESET)
@@ -334,10 +335,10 @@ class CNFGenerator(object):
                 exprs_1 = None
                 exprs_9_0 = None
                 exprs_9_1 = None
-                if debug: 
+                if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
                     print(BLUE + "===> r, j: {}, {}".format(r, j) + RESET)
                 for i in range(j // 2, j):
-                    if debug:
+                    if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
                         print(BLUE + "i: {}".format(i) + " LR: " + str(self.LR(i)) + RESET)
                         print(BLUE + "i: {}".format(i) + " RR: " + str(self.RR(i)) + RESET)
                     
@@ -358,28 +359,32 @@ class CNFGenerator(object):
                     exprs_9_0 = update_clause(exprs_9_0, expr_9_0, And)
                     exprs_9_1 = update_clause(exprs_9_1, expr_9_1, Or)
                 if exprs_0 is not None:
-                    print(">", Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))
+                    if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                        print(">", Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))
                     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d0_{}_{}".format(r, j)), exprs_0))), tag="(7)") # as (7)
                 else:
                     self.add_to_clauses(clauses, [[-self.get_var_id("d0_{}_{}".format(r, j))]], tag = "(7)")
                     #print(RED + "> [][][][][] (7)" + RESET)
                 if exprs_1 is not None:
-                    print(">>", Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))
+                    if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                        print(">>", Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))
                     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("d1_{}_{}".format(r, j)), exprs_1))), tag="(8)") # as (8)
                 else:
                     self.add_to_clauses(clauses, [[-self.get_var_id("d1_{}_{}".format(r, j))]], tag = "(8)")
                     #print(RED + "> [][][][][] (8)" + RESET)
                 if exprs_9_0 is not None:
-                    print(">>>", exprs_9_0)
+                    if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                        print(">>>", exprs_9_0)
                     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(exprs_9_0)), tag="(9-0)") # as (9-0)
                 else:
-                    print(RED + "> [][][][][] (9-0)" + RESET)
+                    if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                        print(RED + "> [][][][][] (9-0)" + RESET)
                 exprs_9_1 = update_clause(exprs_9_1, symbols("a_{}_{}".format(r,j)), Or)
                 if exprs_9_1 is not None:                    
                     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(to_cnf(Equivalent(symbols("u_{}_{}".format(r,j)), exprs_9_1))), tag="(9-1)") # as (9-1)
                 else:
-                    print(RED + "> [][][][][] (9-1)" + RESET)
-                    
+                    if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
+                        print(RED + "> [][][][][] (9-1)" + RESET)
         
         for j in range(1, self._n + 1):
             arjs = []
@@ -401,14 +406,14 @@ class CNFGenerator(object):
             as11_clauses = implies_to_cnf(self.get_var_id("v_{}".format(j)), as11_clauses)                    # as (11)
             clauses = self.add_to_clauses(clauses, as11_clauses, tag="(11)")
         
-        if debug:
+        if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
             print(RED + "Decision Tree Related." + RESET)
             print(self._var_map)
             print(clauses)
         return clauses
 
 
-    def add_example_constraints(self, examples, debug=True):
+    def add_example_constraints(self, examples):
         # Based on 3.2 Computing Decision Trees with SAT [Naro18]
         # K : # of features, N : # of nodes, M : # of data
 
@@ -443,14 +448,14 @@ class CNFGenerator(object):
                 else:       # Negative Example (0)
                     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(
                         to_cnf(Implies(parse_expr("v_{} & c_{}".format(j, j)), exprs))), tag="(13)-{}-{}".format(i, j))                     # as (13)
-        if debug:
+        if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
             print(RED + "Example Related." + RESET)
             print(self._var_map)
             print(clauses)
         return clauses
         
 
-    def add_inference_constraints(self, debug=True):
+    def add_inference_constraints(self):
         # Based on 3.3 Additional Inference Constraints [Naro18]
         # K : # of features, N : # of nodes, M : # of data
         # lda_t,i denote # of leaf nodes until node i
@@ -466,9 +471,9 @@ class CNFGenerator(object):
         clauses = []
         for t in range(0, self._n+1):
             lda_id = self.register("lda_{}_{}".format(t, 0))
-            clauses = add_to_clauses(clauses, [[-lda_id]])
+            clauses = self.add_to_clauses(clauses, [[-lda_id]])
             tau_id = self.register("tau_{}_{}".format(t, 0))
-            clauses = add_to_clauses(clauses, [[-tau_id]])
+            clauses = self.add_to_clauses(clauses, [[-tau_id]])
         for i in range(1, self._n+1):
             lda_id = self.register("lda_{}_{}".format(0, i))
             tau_id = self.register("tau_{}_{}".format(0, i))
@@ -476,21 +481,21 @@ class CNFGenerator(object):
                 self.register("lda_{}_{}".format(t, i))
             for t in range(1, i + 1):
                 self.register("tau_{}_{}".format(t, i))
-            clauses = add_to_clauses(clauses, [[lda_id]])
-            clauses = add_to_clauses(clauses, [[tau_id]])
+            clauses = self.add_to_clauses(clauses, [[lda_id]])
+            clauses = self.add_to_clauses(clauses, [[tau_id]])
             for t in range(1, i // 2 + 1):
-                clauses = add_to_clauses(clauses, self.cnf_to_clauses(
+                clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(
                     "Equivalent(lda_{}_{}, lda_{}_{} | (lda_{}_{} & ~v_{}))".format(t, i, t, i-1, t-1, i-1, i)), tag="pro2")
             for t in range(1, i + 1):
-                clauses = add_to_clauses(clauses, self.cnf_to_clauses(
+                clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(
                     "Equivalent(tau_{}_{}, tau_{}_{} | (tau_{}_{} & ~v_{}))".format(t, i, t, i-1, t-1, i-1, i)), tag="pro2")
             for t in range(1, i // 2 + 1):
                 if (2*(i-t+1)) in self.LR(i) and (2*(i-t+1)+1) in self.RR(i):
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(
                         "lda_{}_{} >> (~l_{}_{} and ~r_{}_{})".format(t, i, i, 2*(i-t+1), i, 2*(i-t+1)+1)), tag="pro3")
             for t in range(math.ceil(i / 2), i + 1):
                 if (2*(t-1)) in self.LR(i) and (2*t-1) in self.RR(i):
-                    clauses = add_to_clauses(clauses, self.cnf_to_clauses(
+                    clauses = self.add_to_clauses(clauses, self.cnf_to_clauses(
                         "tau_{}_{} >> (~l_{}_{} and ~r_{}_{})".format(t, i, i, 2*(t-1), i, 2*t-1)), tag="pro3")
         return clauses
 
@@ -513,12 +518,18 @@ class CNFGenerator(object):
         else:
             raise Exception("Tree Related CNFs not initialized.")
  
-    def generate(self, examples, debug=True):
+    def generate(self, examples):
         self.cnf = CNF() # And of ORs (A or B) and (C or D)
-        if debug:
+        if self._debug_level >= CNFGenDebugLevel.SOLVER_LEVEL:
             print(CYAN + "generating cnfs ===== for {} size".format(self._n) + RESET)
+        if self._debug_level >= CNFGenDebugLevel.SOLVER_LEVEL:
+            print(CYAN + "adding tree related cnfs." + RESET)
         self._tree_related_cnfs = self.add_tree_related_cnfs()
+        if self._debug_level >= CNFGenDebugLevel.SOLVER_LEVEL:
+            print(CYAN + "adding decision tree related cnfs." + RESET)
         self._decision_tree_related_cnfs = self.add_decision_tree_related_cnfs()
+        if self._debug_level >= CNFGenDebugLevel.SOLVER_LEVEL:
+            print(CYAN + "adding example related cnfs." + RESET)
         self._example_constraints_cnfs = self.add_example_constraints(examples)
         self.cnf.extend(self._tree_related_cnfs)
         self.cnf.extend(self._decision_tree_related_cnfs)

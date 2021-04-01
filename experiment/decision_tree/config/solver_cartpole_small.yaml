@@ -9,13 +9,13 @@ solver:
   example_file: /home/joon/xai/causal/stable-baselines3/outputs/example_data/example_data_99.pickle
   model_output_file: model_output.txt
   max_output_models: 1
-  n_example_steps: 50
+  n_example_steps: 40
   starting_tree_size: 15
   max_tree_size: 51
   n_features: 4
   n_sub_features: 20
   use_custom_range: false
-  solver_timeout: 1000
+  solver_timeout: 500
   test_env_params:
     start_state_mode: gym_wrappers.StartStateMode.DESIGNATED_POSITIONS
     start_states: [0.0]
