@@ -8,8 +8,10 @@ solver:
   use_simple: true
   example_file: /home/joon/xai/causal/stable-baselines3/outputs/example_data/example_data_99.pickle
   model_output_file: model_output.txt
-  max_output_models: 1000
+  max_output_models: 1
   n_example_steps: 10
+  starting_tree_size: 3
+  solver_timeout: 1000
   max_tree_size: 15
   n_features: 4
   n_sub_features: 20

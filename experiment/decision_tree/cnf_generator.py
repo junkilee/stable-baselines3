@@ -1,14 +1,11 @@
 import hydra
 import logging
 import os
-import math
-from pysat.formula import CNF  # , WCNF
 from pysat.card import *
 from sympy import symbols
 from sympy.logic.boolalg import to_cnf
 from sympy.core.symbol import Symbol
-from sympy.logic.boolalg import And, Or, Not, Equivalent, Implies
-from sympy.parsing.sympy_parser import parse_expr
+from sympy.logic.boolalg import And, Or, Not, Equivalent
 from experiment.decision_tree.utils.ansi_colors import *
 from pysat.solvers import Solver  # , Glucose4
 from enum import IntEnum
@@ -154,12 +151,15 @@ class CNFGenerator(object):
         for element in left_clause:
             if type(element) == str:
                 elements += [self.get_var_id(element)]
+            else:
+                elements += [element]
         for element in elements:
             result_cnfs += [[-sign * right_var, sign * element]]
         result_cnf = [sign * right_var]
         for element in elements:
             result_cnf += [-sign * element]
         result_cnfs += [result_cnf]
+        # print(right_var, left_clause, is_dnf, result_cnfs)
         return result_cnfs
 
     def get_var_id(self, var_name):
@@ -266,18 +266,12 @@ class CNFGenerator(object):
                 # print(to_cnf("v_{} >> ~l_{}_{}".format(i, i, j)))
                 clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("v_{} >> ~l_{}_{}".format(i, i, j)),
                                               tag="(2)")  # as (2)
-            # rr_ids = []
-            # for j in self.RR(i):
-            #     rr_ids.append(self.register("r_{}_{}".format(i,j)))
-            #     #print(to_cnf("v_{} >> ~l_{}_{}".format(i, i, j)))
-            #     clauses = self.add_to_clauses(clauses, self.cnf_to_clauses("v_{} >> ~r_{}_{}".format(i, i, j)))   # as (2)
-
             as4_clauses = CardEnc.equals(lits=lr_ids, bound=1, encoding=EncType.seqcounter).clauses
             new_clauses, change = self.register_dummy_variables(lr_ids, as4_clauses, "v_{}".format(i))
             if change:
                 # print(BRIGHT_RED + "new variables added." + RESET)
                 as4_clauses = new_clauses
-            if as4_clauses == []:
+            if not as4_clauses:
                 as4_clauses = [[self.get_var_id("v_{}".format(i))]]
             else:
                 as4_clauses = implies_to_cnf(-self.get_var_id("v_{}".format(i)), as4_clauses)  # as (4)
@@ -428,9 +422,6 @@ class CNFGenerator(object):
                                                   self.to_equivalent(self.get_var_id("u_{}_{}".format(r, j)),
                                                                      cnfs_9_1, is_dnf=False),
                                                   tag="(9-1)")
-                else:
-                    if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
-                        print(RED + "> [][][][][] (9-1)" + RESET)
 
         for j in range(1, self._n + 1):
             arjs = []
@@ -491,14 +482,14 @@ class CNFGenerator(object):
                                                   implies_to_cnf([
                                                       self.get_var_id("v_{}".format(j)),
                                                       -self.get_var_id("c_{}".format(j))
-                                                  ], d_sigmarq_rjs),
+                                                  ], [d_sigmarq_rjs]),
                                                   tag="(12)-{}-{}".format(i, j))  # as (12)
                 else:  # Negative Example (0)
                     clauses = self.add_to_clauses(clauses,
                                                   implies_to_cnf([
                                                       self.get_var_id("v_{}".format(j)),
                                                       self.get_var_id("c_{}".format(j))
-                                                  ], d_sigmarq_rjs),
+                                                  ], [d_sigmarq_rjs]),
                                                   tag="(13)-{}-{}".format(i, j))  # as (13)
         if self._debug_level >= CNFGenDebugLevel.CNF_LEVEL:
             print(RED + "Example Related." + RESET)
