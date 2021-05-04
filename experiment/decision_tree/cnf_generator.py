@@ -582,6 +582,18 @@ class CNFGenerator(object):
 
         return self.cnf.clauses
 
+    def write(self, file_name):
+        clauses = self.cnf.clauses
+        with open(file_name, "w") as f:
+            f.write("c\n")
+            f.write("c {}\n".format(file_name))
+            f.write("c\n")
+            f.write("p cnf {} {}\n".format(self._counter, len(clauses)))
+            for clause in clauses:
+                for var in clause:
+                    f.write("{} ".format(var))
+                f.write("0\n")
+
 
 @hydra.main(config_path="config", config_name="cnf_generator_test")
 def main(cfg):

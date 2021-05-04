@@ -79,6 +79,7 @@ setup(
         "pandas",
         # Plotting learning curves
         "matplotlib",
+        "hydra-core"
     ],
     extras_require={
         "tests": [

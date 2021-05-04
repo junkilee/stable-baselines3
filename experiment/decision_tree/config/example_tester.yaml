@@ -1,0 +1,20 @@
+hydra:
+  run:
+    dir: ./outputs/examples-test-${now:%Y-%m-%d-%H-%M-%S}
+
+example_test:
+  example_file: /home/joon/xai/causal/stable-baselines3/outputs/example_data/example_data_99.pickle
+  # example_file: /home/joon/xai/causal/stable-baselines3/outputs/examples-test-data/new_example_data_99.pickle
+  # example_file: /home/joon/xai/causal/stable-baselines3/outputs/examples-test-2021-04-28-04-45-17/new_example_data_99.pickle
+  use_custom_range: True
+  num_examples_for_test: 1000
+  custom_ranges: [[[-2.4, 2.4, 21]],  # lat. pos.
+                 [[-4.8, 4.8, 21]], # lat. vel.
+                 [[-0.209, 0.209, 21]], # pole ang.
+                 [[-0.418, 0.418, 21]]]  # pole ang. vel.
+  perform_check: True
+  check_verbose: True
+  transform_example: True
+  save_filename: new_example_data_99.pickle
+  save_feature_action_list: True
+  feature_action_list_filename: feature_action_99.txt

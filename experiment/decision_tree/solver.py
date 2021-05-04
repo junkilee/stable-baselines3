@@ -12,6 +12,7 @@ from experiment.decision_tree.example_generator import simple_example
 from .example_generator import load_data
 from .finite_cartpole import CartPoleRangeSet, default_range_set
 from experiment.decision_tree.utils.ansi_colors import *
+from omegaconf.listconfig import ListConfig
 
 
 def unpack_feature_list(feature_list):
@@ -118,7 +119,11 @@ class DecisionTreeSATSolver(object):
             self._n_sub_features = 1
         else:            
             self._load_example(cfg.solver.example_file)        
-            self._n_example_steps   = cfg.solver.n_example_steps                
+            self._n_example_steps = cfg.solver.n_example_steps
+            if type(self._n_example_steps) is ListConfig:
+                self._use_example_range = True
+            else:
+                self._use_example_range = False
             if not cfg.solver.use_custom_range:
                 self._range = default_range_set            
             else:
@@ -133,6 +138,8 @@ class DecisionTreeSATSolver(object):
         self._model_output_file = cfg.solver.model_output_file
         self._max_output_models = cfg.solver.max_output_models
         self._solver_timeout = cfg.solver.solver_timeout
+        self._results_filename = cfg.solver.results_file
+        self._only_generate_files = cfg.solver.only_generate_files
 
     def _load_example(self, filename):
         self._data = load_data(filename)
@@ -140,7 +147,9 @@ class DecisionTreeSATSolver(object):
     
     def _data_to_feature_list(self):
         self._feature_action_list = []
-        for data in self._data[:self._n_example_steps]:
+        n = self._n_example_steps if not self._use_example_range else self._n_example_steps[1] - self._n_example_steps[2]
+        print(self._use_example_range, n)
+        for data in self._data[:n]:
             obs, action = data
             # print(obs, action)
             features = unpack_feature_list(self._range.convert_to_features(obs))
@@ -176,7 +185,7 @@ class DecisionTreeSATSolver(object):
 
     def check_class_from_tree(self, example, tree_node:TreeNode):
         if tree_node.is_leaf:
-            return tree_node.node_class
+            return tree_node.node_class, tree_node.node_id
         else:
             f = tree_node.features[0][0]
             if example[f - 1]:
@@ -184,95 +193,123 @@ class DecisionTreeSATSolver(object):
             else:
                 return self.check_class_from_tree(example, tree_node.right_child)
 
-    def test_example(self, root_node):
+    def test_example(self, root_node, n_examples):
         correct = 0
-        for features, action in self._feature_action_list:
-            _result = int(self.check_class_from_tree(features, root_node))
-            if action ==_result:
+        count = 0
+        node_id_map = dict()
+        for features, action in self._feature_action_list[:n_examples]:
+            count += 1
+            _result, node_id = self.check_class_from_tree(features, root_node)
+            _result = int(_result)
+            if node_id in node_id_map:
+                node_id_map[node_id] += [count]
+            else:
+                node_id_map[node_id] = [count]
+            if action == _result:
                 correct += 1
-        accuracy = correct / len(self._feature_action_list) * 100
+
+        print(node_id_map)
+        accuracy = correct / n_examples * 100
         return accuracy
 
     def solve(self):
         # Output decision trees from the smallest to the larger ones
         # Save them in a file                
 
-        counter = 1
         prev_edge_tables = []
         print(MAGENTA + "READ EXAMPLES - of size {}".format(self._total_example_steps))
         print(RED + "START - max tree size = {}".format(self._max_tree_size) + RESET)
 
         output_file = open(self._model_output_file, "w")
 
-        for tree_size in range(self._starting_tree_size, self._max_tree_size + 1, 2):
-            cnf_gen = CNFGenerator(
-                tree_size,
-                self._n_features * self._n_sub_features,
-                self._n_example_steps,
-                debug_level=CNFGenDebugLevel.SOLVER_LEVEL)
-            
-            s = Solver(name='g4')
-            print(GREEN + "Generate - {}".format(len(self._feature_action_list)) + RESET)
-            s.append_formula(cnf_gen.generate(self._feature_action_list))
-            print(GREEN + "Formulas generated." + RESET)
-            
-            def interrupt(s):
-                print(BRIGHT_RED + "Timed Out." + RESET)
-                s.interrupt()
+        if self._use_example_range:
+            e_range = range(*self._n_example_steps)
+        else:
+            e_range = range(self._n_example_steps, self._n_example_steps+1)
 
-            timer = Timer(1000, interrupt, [s])
-            timer.start()
-            
-            result = s.solve_limited(expect_interrupt=True)
+        results_file = open(self._results_filename, "w")
+        last_max_tree_size = self._starting_tree_size
+        for n_examples in e_range:
+            print(BRIGHT_YELLOW + "Running EXAMPLES - of size {}".format(n_examples))
+            counter = 1
+            found_size = -1
+            for tree_size in range(last_max_tree_size, self._max_tree_size + 1, 2):
+                cnf_gen = CNFGenerator(
+                    tree_size,
+                    self._n_features * self._n_sub_features,
+                    n_examples,
+                    debug_level=CNFGenDebugLevel.SOLVER_LEVEL)
 
-            print(RED + "RESULT " + CYAN + str(tree_size) + RED + " : " + RESET)
-            print(result)                    
+                with Solver(name='g4') as s:
+                    print(GREEN + "Generate - {}".format(n_examples) + RESET)
+                    s.append_formula(cnf_gen.generate(self._feature_action_list[:n_examples]))
+                    cnf_gen.write("formula_{}_{}.cnf".format(n_examples, tree_size))
+                    print(GREEN + "Formulas generated." + RESET)
 
-            before_truth_table = []
-            prev_nodes = []
-                        
-            for m in s.enum_models():                
-                m_after = retrieve_truth_table_without_dummies(cnf_gen.var_map, m)
-                if before_truth_table != m_after:                    
-                    # print(m)
-                    # display_truth_table(cnf_gen.var_map, m)
-                    output_truth_table(output_file, cnf_gen.var_map, m, counter)
-                    edges, g = generate_graph(tree_size, cnf_gen.var_map, m)
-                    labels = generate_labels(tree_size, cnf_gen.var_map, m, self._n_features, self._n_sub_features)
-                    # labels = None
-                    # if edges not in prev_edge_tables:
-                    #     plot_graph(g, identifier="tree_" + str(counter), labels=labels)
-                    #     prev_edge_tables += [edges]
-                    # plot_graph(g, identifier="tree_" + str(counter), labels=labels)
-                    
-                    root_node = self.build_decision_tree(1, cnf_gen.var_map, m, cnf_gen)
-                    prev_node_check = True
-                    for prev_node in prev_nodes:
-                        if root_node.compare(prev_node):    
-                            prev_node_check = False                            
-                            break                    
-                    if prev_node_check:
-                        prev_nodes += [root_node]
-                        print(RED + "MODELS {} - {}".format(counter, len(prev_nodes)) + RESET)
-                        plot_graph(g, identifier="tree_" + str(counter), labels=labels)
-                        root_node.print()
-                        # print("-----")
-                        # cnf_gen.check_tree_related_cnfs(m)
-                        # cnf_gen.check_decision_tree_related_cnfs(m)
-                        cnf_gen.check_example_constraints_cnfs(m, debug=False)
-                        print(RED + "Accuracy: {}".format(self.test_example(root_node)) + RESET)
-                        counter = counter + 1
-                        before_truth_table = m_after
-                        if self._max_output_models < counter:
-                            print(RED + "Models all found." + RESET)
-                            break
-                    else:
-                        print(".", end='')
-            s.delete()
-            print('')
-            if self._max_output_models < counter:
-                print(RED + "Terminating." + RESET)
-                break
+                    if self._only_generate_files:
+                        continue
+
+                    def interrupt(s):
+                        print(BRIGHT_RED + "Timed Out." + RESET)
+                        s.interrupt()
+
+                    timer = Timer(1000, interrupt, [s])
+                    timer.start()
+
+                    result = s.solve_limited(expect_interrupt=True)
+
+                    print(RED + "RESULT " + CYAN + str(tree_size) + RED + " : " + RESET)
+                    print(result)
+
+                    before_truth_table = []
+                    prev_nodes = []
+
+                    for m in s.enum_models():
+                        m_after = retrieve_truth_table_without_dummies(cnf_gen.var_map, m)
+                        if before_truth_table != m_after:
+                            # print(m)
+                            # display_truth_table(cnf_gen.var_map, m)
+                            output_truth_table(output_file, cnf_gen.var_map, m, counter)
+                            edges, g = generate_graph(tree_size, cnf_gen.var_map, m)
+                            labels = generate_labels(tree_size, cnf_gen.var_map, m, self._n_features, self._n_sub_features)
+                            # labels = None
+                            # if edges not in prev_edge_tables:
+                            #     plot_graph(g, identifier="tree_" + str(counter), labels=labels)
+                            #     prev_edge_tables += [edges]
+                            # plot_graph(g, identifier="tree_" + str(counter), labels=labels)
+
+                            root_node = self.build_decision_tree(1, cnf_gen.var_map, m, cnf_gen)
+                            prev_node_check = True
+                            for prev_node in prev_nodes:
+                                if root_node.compare(prev_node):
+                                    prev_node_check = False
+                                    break
+                            if prev_node_check:
+                                prev_nodes += [root_node]
+                                print(RED + "MODELS {} - {}".format(counter, len(prev_nodes)) + RESET)
+                                plot_graph(g, identifier="tree_{}_{}_{}".format(n_examples, tree_size, counter),
+                                           labels=labels)
+                                root_node.print()
+                                # print("-----")
+                                # cnf_gen.check_tree_related_cnfs(m)
+                                # cnf_gen.check_decision_tree_related_cnfs(m)
+                                cnf_gen.check_example_constraints_cnfs(m, debug=False)
+                                print(RED + "Accuracy: {}".format(self.test_example(root_node, n_examples)) + RESET)
+                                counter = counter + 1
+                                before_truth_table = m_after
+                                found_size = tree_size
+                                if self._max_output_models < counter:
+                                    print(RED + "Models all found." + RESET)
+                                    break
+                            else:
+                                print(".", end='')
+                if self._max_output_models < counter:
+                    print(RED + "Terminating." + RESET)
+                    break
+            results_file.write("{}, {}\n".format(n_examples, found_size))
+            if found_size > last_max_tree_size:
+                last_max_tree_size = found_size
+        results_file.close()
         print("Closing files.")
         output_file.close()
 

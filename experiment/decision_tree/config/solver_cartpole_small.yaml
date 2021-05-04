@@ -6,12 +6,17 @@ experiment_name: cartpole_sat_solver
 
 solver:
   use_simple: false
-  example_file: /home/joon/xai/causal/stable-baselines3/outputs/example_data/example_data_99.pickle
+  # example_file: /home/joon/xai/causal/stable-baselines3/outputs/examples-test-2021-04-23-18-56-01/new_example_data_99.pickle
+  # example_file: /home/joon/xai/causal/stable-baselines3/outputs/examples-test-2021-04-28-04-55-54/new_example_data_99.pickle
+  example_file: /home/joon/xai/causal/stable-baselines3/outputs/examples-test-save-1000/new_example_data_99.pickle
+  # example_file: /home/joon/xai/causal/stable-baselines3/outputs/example_data/example_data_99.pickle
   model_output_file: model_output.txt
   max_output_models: 1
-  n_example_steps: 40
+  n_example_steps: [10, 1000, 10]
+  only_generate_files: False
+  results_file: results.txt
   starting_tree_size: 3
-  max_tree_size: 51
+  max_tree_size: 101
   n_features: 4
   n_sub_features: 20
   use_custom_range: false

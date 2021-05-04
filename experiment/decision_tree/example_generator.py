@@ -91,7 +91,6 @@ class ExampleCollector(object):
                 for i in range(self.num_agents):
                     self.agents[i].load(os.path.join(cfg.agents.save_dir, str(i)))
 
-
     def collect(self):
         env = gym_wrappers.make("cartpole", "zero", "0",
                                 start_state_mode=self.env_params.start_state_mode,
@@ -118,7 +117,8 @@ class ExampleCollector(object):
             print("saved file to {}".format(os.getcwd()))
         return
 
-simple_example = [ # L, (right) C
+
+simple_example = [  # L, (right) C
     ([1, 0, 1, 0], 0),
     ([1, 0, 0, 1], 0),
     ([0, 0, 1, 0], 1),
@@ -129,11 +129,13 @@ simple_example = [ # L, (right) C
     ([0, 0, 1, 1], 1)
 ]
 
+
 @hydra.main(config_path="config", config_name="example_generator")
 def main(cfg):
     logging.info("Working directory : {}".format(os.getcwd()))
     example_collector = ExampleCollector(cfg)
     example_collector.collect()
+
 
 if __name__ == "__main__":
     main()

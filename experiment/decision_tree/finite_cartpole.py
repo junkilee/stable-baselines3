@@ -136,7 +136,6 @@ class FiniteCartPoleMDP(MDP):
             np_random = None
         super().__init__("discretized_cartpole", FiniteCartPoleMDP.ACTIONS, gamma, np_random=np_random)
 
-
     def sample_start_states(self):
         state = self.create_state(self.orig_env.sample_start_state())
         return state
@@ -178,7 +177,7 @@ class FiniteCartPoleMDP(MDP):
 
 if __name__ == '__main__':
     mdp = FiniteCartPoleMDP()
-    from experiment.decision_trees.planners.value_iteration import ValueIteration
+    from experiment.decision_tree.planners.value_iteration import ValueIteration
     vi = ValueIteration(mdp)
     start = FiniteCartPoleState((0, 0))
     vi.run()
